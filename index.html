@@ -1,0 +1,1287 @@
+<!--
+  Personal Energy Life Dashboard - Designed By: Hsuan-Jun Lin
+  @Arizona State University - SES 141 Design Project Fall 2025 #69375
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Personal Energy Life Dashboard</title>
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+
+    :root{
+      --anchor-offset: clamp(72px, 8vw, 112px);
+    }
+
+    main section {
+      scroll-margin-top: var(--anchor-offset);
+    }
+
+    /* Energy Flow Visualization Styles */
+    .energy-flow-container {
+      position: relative;
+      width: 100%;
+      min-height: 400px;
+      overflow: visible;
+    }
+    
+    .flow-node {
+      position: relative;
+      padding: 12px 16px;
+      border-radius: 12px;
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transition: all 0.3s ease;
+      cursor: pointer;
+      z-index: 10;
+      min-width: 120px;
+    }
+    
+    .flow-node:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    }
+    
+    .flow-node.input { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .flow-node.process { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+    .flow-node.output { background: linear-gradient(135deg, #10b981, #059669); }
+    .flow-node.loss { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    
+    .flow-connection {
+      position: absolute;
+      height: 4px;
+      background: linear-gradient(90deg, #6b7280, #9ca3af);
+      border-radius: 2px;
+      z-index: 5;
+      transition: all 0.3s ease;
+    }
+    
+    .flow-connection:hover {
+      height: 6px;
+      background: linear-gradient(90deg, #4b5563, #6b7280);
+    }
+    
+    .flow-arrow {
+      position: absolute;
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid #6b7280;
+      z-index: 6;
+    }
+    
+    .flow-value {
+      position: absolute;
+      background: white;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      z-index: 15;
+      white-space: nowrap;
+    }
+    
+    .energy-pathway {
+      position: relative;
+      margin-bottom: 20px;
+    }
+    
+    .pathway-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #374151;
+      border-left: 4px solid #3b82f6;
+      padding-left: 8px;
+    }
+    
+    /* Animation for value changes */
+    .value-change { animation: pulse 0.5s ease-in-out; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+    
+    /* Timeline styles */
+    .timeline-period { cursor: pointer; transition: all 0.2s ease; }
+    .timeline-period:hover { transform: translateY(-2px); }
+    .timeline-period.active { border-color: #3b82f6; background-color: #eff6ff; }
+
+    /* Responsive lane grid for energy flow */
+    .lane-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1.2fr 1.2fr 1.2fr 1.2fr;
+      gap: 32px;
+      align-items: center;
+    }
+    .lane {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 16px;
+      position: relative;
+      min-height: 112px;
+    }
+    .lane-title {
+      font-weight: 700;
+      color: #334155;
+      margin-bottom: 10px;
+      border-left: 4px solid #3b82f6;
+      padding-left: 8px;
+      font-size: 15px;
+    }
+    .diagram-wrap {
+      position: relative;
+    }
+    .connector-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    /* ---- custom scale for rangePhone ---- */
+    .range-scale {
+      display: grid;
+      grid-template-columns: repeat(25, 1fr);
+      gap: 0;
+      margin-top: 6px;
+      user-select: none;
+    }
+    .range-scale .cell {
+      position: relative;
+      height: 18px;
+      font-size: 10px;
+      color: #64748b;
+    }
+    .range-scale .cell::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 1px;
+      height: 6px;
+      background: #cbd5e1;
+      transform: translateX(-50%);
+    }
+    .range-scale .cell.major::before {
+      height: 10px;
+      background: #94a3b8;
+    }
+    .range-scale .num {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .range-scale .cell.major .num {
+      font-size: 12px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <!-- Header -->
+  <header class="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Personal Energy Life Dashboard</h1>
+      <nav class="hidden md:flex gap-6 text-sm">
+        <a href="#inputs" class="hover:underline">Energy Inputs</a>
+        <a href="#flow" class="hover:underline">Energy Flow</a>
+        <a href="#outputs" class="hover:underline">Energy Outputs</a>
+        <a href="#estimation" class="hover:underline">Estimation & Comparison</a>
+        <a href="#whatif" class="hover:underline">What‑if</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-8 space-y-12">
+    <!-- Intro -->
+    <section class="bg-gradient-to-br from-blue-50 to-emerald-50 rounded-2xl p-6 md:p-8 shadow-sm">
+      <div class="md:flex items-start gap-8">
+        <div class="flex-1 space-y-3">
+          <h2 class="text-xl md:text-2xl font-semibold">A Daily View of Your Personal Energy Flow</h2>
+          <p class="text-slate-700">This interactive dashboard visualizes how you <span class="font-medium">gain</span> and <span class="font-medium">use</span> energy across a typical day. It demonstrates energy estimation, qualitative description, energy transport & conversion, and critical comparison to household electricity.</p>
+          
+          <div class="flex flex-wrap gap-4 mt-4">
+            <select id="unitSelector" class="rounded-xl border p-2 text-sm">
+              <option value="J">Joules (J)</option>
+              <option value="kJ">Kilojoules (kJ)</option>
+              <option value="kcal" selected>Kilocalories (kcal)</option>
+              <option value="kWh">Kilowatt-hours (kWh)</option>
+            </select>
+            <select id="presetSelector" class="rounded-xl border p-2 text-sm">
+              <option value="custom">Custom</option>
+              <option value="average">Average Adult</option>
+              <option value="athlete">Athlete</option>
+              <option value="sedentary">Sedentary Worker</option>
+            </select>
+            <button id="btnSave" class="rounded-xl bg-slate-700 text-white px-4 py-2 text-sm hover:bg-slate-600">Save Settings</button>
+            <button id="btnReset" class="rounded-xl border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">Reset</button>
+          </div>
+
+          <div class="mt-6 max-w-2xl rounded-2xl border bg-white/70 backdrop-blur p-4 shadow-sm">
+            <h3 class="font-semibold mb-2">Design Idea</h3>
+            <p class="text-sm text-slate-700">
+              My name is Hsuan-Jun Lin which is the Computer Science Major Students in ASU. I built this project to visualize how energy flows through daily life,
+              combining science concepts with interactive design.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-6 md:mt-0 w-full md:w-72">
+          <div class="rounded-2xl border bg-white p-4 shadow-sm">
+            <h3 class="font-semibold mb-2">Quick Inputs</h3>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <label class="block">Food (kcal)
+                <input id="inFood" type="number" class="mt-1 w-full rounded-xl border p-2 change-trigger" placeholder="e.g., 2200" value="2200" min="0" />
+              </label>
+              <label class="block">Sunlight (hrs)
+                <input id="inSun" type="number" step="0.1" class="mt-1 w-full rounded-xl border p-2 change-trigger" placeholder="e.g., 1.0" value="1.0" min="0" max="24" />
+              </label>
+              <label class="block">Sleep (hrs)
+                <input id="inSleep" type="number" step="0.1" class="mt-1 w-full rounded-xl border p-2 change-trigger" placeholder="e.g., 8" value="8" min="0" max="24" />
+              </label>
+              <label class="block">Exercise (min)
+                <input id="inExercise" type="number" class="mt-1 w-full rounded-xl border p-2 change-trigger" placeholder="e.g., 30" value="30" min="0" />
+              </label>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">Changes update all visuals & calculations automatically.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Daily Timeline -->
+    <section class="bg-white rounded-2xl border shadow-sm p-5">
+      <h2 class="text-xl font-semibold mb-4">Daily Timeline</h2>
+      <p class="text-sm text-slate-600 mb-4">Click on a time period to apply typical energy values for that activity.</p>
+      <div class="grid grid-cols-7 gap-2 text-xs">
+        <div class="timeline-period text-center p-2 rounded-lg border" data-period="sleep" data-food="0" data-sun="0" data-sleep="7" data-exercise="0">
+          <div class="font-medium">Sleep</div>
+          <div>12am-7am</div>
+        </div>
+        <div class="timeline-period text-center p-2 rounded-lg border" data-period="breakfast" data-food="500" data-sun="0.2" data-sleep="0" data-exercise="0">
+          <div class="font-medium">Breakfast</div>
+          <div>7am-8am</div>
+        </div>
+        <div class="timeline-period text-center p-2 rounded-lg border" data-period="commute" data-food="0" data-sun="0.3" data-sleep="0" data-exercise="20">
+          <div class="font-medium">Commute</div>
+          <div>8am-9am</div>
+        </div>
+        <div class="timeline-period text-center p-2 rounded-lg border" data-period="work" data-food="300" data-sun="0.1" data-sleep="0" data-exercise="5">
+          <div class="font-medium">Work</div>
+          <div>9am-12pm</div>
+        </div>
+        <div class="timeline-period text-center p-2 rounded-lg border" data-period="lunch" data-food="700" data-sun="0.5" data-sleep="0" data-exercise="0">
+          <div class="font-medium">Lunch</div>
+          <div>12pm-1pm</div>
+        </div>
+        <div class="timeline-period text-center p-2 rounded-lg border" data-period="afternoon" data-food="200" data-sun="0.3" data-sleep="0" data-exercise="10">
+          <div class="font-medium">Afternoon</div>
+          <div>1pm-5pm</div>
+        </div>
+        <div class="timeline-period text-center p-2 rounded-lg border" data-period="evening" data-food="500" data-sun="0.2" data-sleep="1" data-exercise="15">
+          <div class="font-medium">Evening</div>
+          <div>5pm-12am</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- (1) Energy Inputs -->
+    <section id="inputs" class="space-y-6">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xl md:text-2xl font-semibold">Energy Inputs</h2>
+        <div class="text-sm text-slate-600">Click a card for detailed explanation.</div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <!-- Chemical (Food) -->
+        <button data-dialog="dlgFood" class="group rounded-2xl border bg-white p-5 text-left shadow-sm hover:shadow transition">
+          <div class="flex items-center gap-3">
+            <div class="rounded-xl bg-amber-100 p-3">🍞</div>
+            <div>
+              <h3 class="font-semibold">Chemical Energy (Food)</h3>
+              <p class="text-sm text-slate-600">Meals supply glucose & fats converted into ATP.</p>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="h-2 w-full bg-slate-100 rounded-full">
+              <div id="barFood" class="h-2 rounded-full bg-amber-400 transition-all duration-500" style="width: 60%;"></div>
+            </div>
+            <p id="labelFood" class="mt-2 text-xs text-slate-500">~2200 kcal today</p>
+          </div>
+        </button>
+
+        <!-- Light (Sun) -->
+        <button data-dialog="dlgSun" class="group rounded-2xl border bg-white p-5 text-left shadow-sm hover:shadow transition">
+          <div class="flex items-center gap-3">
+            <div class="rounded-xl bg-sky-100 p-3">☀️</div>
+            <div>
+              <h3 class="font-semibold">Light Exposure (Sunlight)</h3>
+              <p class="text-sm text-slate-600">Circadian alignment & mood support.</p>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="h-2 w-full bg-slate-100 rounded-full">
+              <div id="barSun" class="h-2 rounded-full bg-sky-400 transition-all duration-500" style="width: 20%;"></div>
+            </div>
+            <p id="labelSun" class="mt-2 text-xs text-slate-500">~1.0 hr outside</p>
+          </div>
+        </button>
+
+        <!-- Sleep (Recovery) -->
+        <button data-dialog="dlgSleep" class="group rounded-2xl border bg-white p-5 text-left shadow-sm hover:shadow transition">
+          <div class="flex items-center gap-3">
+            <div class="rounded-xl bg-emerald-100 p-3">😴</div>
+            <div>
+              <h3 class="font-semibold">Sleep (Recovery)</h3>
+              <p class="text-sm text-slate-600">Physiological repair and memory consolidation.</p>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="h-2 w-full bg-slate-100 rounded-full">
+              <div id="barSleep" class="h-2 rounded-full bg-emerald-400 transition-all duration-500" style="width: 70%;"></div>
+            </div>
+            <p id="labelSleep" class="mt-2 text-xs text-slate-500">~8.0 hr sleep</p>
+          </div>
+        </button>
+      </div>
+
+      <!-- Dialogs for qualitative text -->
+      <dialog id="dlgFood" class="rounded-2xl p-0 w-full max-w-xl">
+        <div class="p-6 space-y-3">
+          <h3 class="text-lg font-semibold">Chemical Energy from Food</h3>
+          <p>Food calories (kcal) measure chemical potential energy stored in carbohydrates, fats, and proteins. Through digestion and cellular respiration, your body converts these into <span class="font-medium">Adenosine Triphosphate (ATP)</span>, which powers cellular processes, movement, and thermoregulation.</p>
+          <p class="text-sm text-slate-600">Daily Life Example: "For breakfast I had two slices of toast and a glass of milk. These foods break down to glucose and fatty acids that cells use to produce ATP, providing the baseline energy for the day."</p>
+          <div class="flex justify-end pt-2">
+            <button data-close class="rounded-xl bg-slate-900 text-white px-4 py-2">Close</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="dlgSun" class="rounded-2xl p-0 w-full max-w-xl">
+        <div class="p-6 space-y-3">
+          <h3 class="text-lg font-semibold">Sunlight Exposure</h3>
+          <p>Unlike plants, humans don't harvest sunlight as a direct energy input. However, daylight exposure supports circadian timing and mood, indirectly influencing energy use patterns and sleep quality.</p>
+          <div class="flex justify-end pt-2">
+            <button data-close class="rounded-xl bg-slate-900 text-white px-4 py-2">Close</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="dlgSleep" class="rounded-2xl p-0 w-full max-w-xl">
+        <div class="p-6 space-y-3">
+          <h3 class="text-lg font-semibold">Sleep as Energy Recovery</h3>
+          <p>Sleep does not add energy like food but restores function, enabling tissue repair, metabolic housekeeping, and memory consolidation—key to efficient energy conversion the next day.</p>
+          <div class="flex justify-end pt-2">
+            <button data-close class="rounded-xl bg-slate-900 text-white px-4 py-2">Close</button>
+          </div>
+        </div>
+      </dialog>
+    </section>
+
+    <!-- Energy Flow Visualization -->
+    <section id="flow" class="space-y-6">
+      <h2 class="text-xl md:text-2xl font-semibold">Energy Flow Visualization</h2>
+      <div class="bg-white rounded-2xl border shadow-sm p-6">
+        <div class="mb-6">
+          <div class="flex flex-wrap gap-4 text-sm">
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 rounded bg-amber-500"></div>
+              <span>Energy Input</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 rounded bg-blue-500"></div>
+              <span>Conversion Process</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 rounded bg-green-500"></div>
+              <span>Useful Output</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 rounded bg-red-500"></div>
+              <span>Energy Loss</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="diagram-wrap">
+          <div class="mb-2 grid grid-cols-5 text-xs font-medium text-slate-600 px-2 select-none">
+            <div>Energy Input</div><div>Conversion 1</div><div>Conversion 2</div><div>Useful Output</div><div>Energy Loss</div>
+          </div>
+          <svg class="connector-svg" id="flowConnectors" aria-hidden="true"></svg>
+          <div id="energyFlowDiagram"></div>
+        </div>
+
+        <div class="mt-6 grid md:grid-cols-2 gap-6 text-sm">
+          <div>
+            <h3 class="font-semibold mb-3">Efficiency Metrics</h3>
+            <div class="space-y-2">
+              <div class="flex justify-between">
+                <span>Overall Efficiency:</span>
+                <span id="overallEfficiency" class="font-semibold">--%</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Exercise Efficiency:</span>
+                <span id="exerciseEfficiency" class="font-semibold">--%</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Heat Loss:</span>
+                <span id="heatLossPercent" class="font-semibold">--%</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3 class="font-semibold mb-3">Pathway Details</h3>
+            <div id="pathwayDetails" class="space-y-3">
+              <div class="text-slate-600">Hover over any node or connection to see detailed information</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- (2) Energy Outputs -->
+    <section id="outputs" class="space-y-6">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xl md:text-2xl font-semibold">Transport and Conversion of Energy - Energy Outputs</h2>
+        <div class="text-sm text-slate-600">Hover a legend item for explanations.</div>
+      </div>
+
+      <div class="grid md:grid-cols-5 gap-6">
+        <div class="md:col-span-3 bg-white rounded-2xl border shadow-sm p-4">
+          <canvas id="pieOutputs" height="240" aria-label="Energy consumption pie chart" role="img"></canvas>
+        </div>
+        <div class="md:col-span-2 bg-white rounded-2xl border shadow-sm p-4">
+          <h3 class="font-semibold mb-2">Output Explanations</h3>
+          <div id="explain" class="space-y-3 text-sm"></div>
+          <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <label class="block">BMR (W)
+              <input id="wBmr" type="number" class="mt-1 w-full rounded-xl border p-2 change-trigger" value="80" min="0" />
+            </label>
+            <label class="block">Exercise (W)
+              <input id="wEx" type="number" class="mt-1 w-full rounded-xl border p-2 change-trigger" value="100" min="0" />
+            </label>
+            <label class="block">Brain extra (W)
+              <input id="wBrainExtra" type="number" class="mt-1 w-full rounded-xl border p-2 change-trigger" value="5" min="0" />
+            </label>
+            <label class="block">Env. loss (W)
+              <input id="wEnv" type="number" class="mt-1 w-full rounded-xl border p-2 change-trigger" value="20" min="0" />
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- (3) Estimation & Comparison -->
+    <section id="estimation" class="space-y-6">
+      <h2 class="text-xl md:text-2xl font-semibold">Estimation & Comparison</h2>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <!-- Science Behind Panel -->
+        <div class="bg-white rounded-2xl border shadow-sm p-5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold">Science Behind Estimates</h3>
+            <button id="btnExplain" class="rounded-xl border px-3 py-1 text-sm">Show/Hide</button>
+          </div>
+          <div id="sciencePanel" class="mt-4 space-y-4 text-sm">
+            <div class="space-y-1">
+              <h4 class="font-medium">Food Energy</h4>
+              <p id="exFood">Breakfast ≈ 400 kcal. Using 1 kcal ≈ 4184 J → E ≈ 400 × 4184 ≈ 1.7×10<sup>6</sup> J.</p>
+            </div>
+            <div class="space-y-1">
+              <h4 class="font-medium">Exercise Energy</h4>
+              <p id="exExercise">30 min at ~100 W → E = P·t ≈ 100 W × 1800 s ≈ 1.8×10<sup>5</sup> J.</p>
+            </div>
+            <div class="space-y-1">
+              <h4 class="font-medium">Daily Total</h4>
+              <p id="exTotal">If food intake ≈ 2200 kcal → 2200 × 4184 ≈ 9.2×10<sup>6</sup> J.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Comparison Panel -->
+        <div class="bg-white rounded-2xl border shadow-sm p-5">
+          <h3 class="font-semibold">Comparison with Household Electricity</h3>
+          <p class="text-sm text-slate-600">Compare your daily energy use to common electrical appliances.</p>
+          <div class="grid grid-cols-2 gap-3 text-sm mt-3">
+            <label class="block">Daily energy (J)
+              <input id="inDailyJ" type="number" class="mt-1 w-full rounded-xl border p-2 change-trigger" value="9200000" min="0" />
+            </label>
+            <label class="block">Appliance power (W)
+              <input id="inApplianceW" type="number" class="mt-1 w-full rounded-xl border p-2 change-trigger" value="50" min="1" />
+            </label>
+          </div>
+          <div class="mt-4 text-sm space-y-1">
+            <p id="cmpKwh">Daily energy ≈ 9.2×10<sup>6</sup> J ≈ 2.56 kWh.</p>
+            <p id="cmpAppliance">Equivalent to continuously running a laptop for ~51.2 hours (at 50 W).</p>
+          </div>
+          <div class="mt-4">
+            <canvas id="barCompare" height="200" aria-label="Comparison bar chart" role="img"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- (4) What‑if Simulator -->
+    <section id="whatif" class="space-y-6">
+      <h2 class="text-xl md:text-2xl font-semibold">What‑if: Cognitive Load from Phone Use</h2>
+      <p class="text-slate-700 text-sm">Adjust the slider to simulate extra brain power during smartphone use. We approximate an additional 5 W of brain activity during focused interaction.</p>
+
+      <div class="bg-white rounded-2xl border shadow-sm p-5">
+        <div class="grid md:grid-cols-4 gap-4 items-center">
+          <label class="md:col-span-3 block">Active phone use (hours/day)
+            <!-- Slider -->
+            <input id="rangePhone" type="range" min="0" max="24" step="1" value="2" 
+                  class="w-full change-trigger" list="tickmarks" />
+            <div id="phone-scale" class="range-scale" aria-hidden="true"></div>
+            <!-- Tick labels -->
+            <datalist id="tickmarks">
+              <option value="0" label="0"></option>
+              <option value="1" label="1"></option>
+              <option value="2" label="2"></option>
+              <option value="3" label="3"></option>
+              <option value="4" label="4"></option>
+              <option value="5" label="5"></option>
+              <option value="6" label="6"></option>
+              <option value="7" label="7"></option>
+              <option value="8" label="8"></option>
+              <option value="9" label="9"></option>
+              <option value="10" label="10"></option>
+              <option value="11" label="11"></option>
+              <option value="12" label="12"></option>
+              <option value="13" label="13"></option>
+              <option value="14" label="14"></option>
+              <option value="15" label="15"></option>
+              <option value="16" label="16"></option>
+              <option value="17" label="17"></option>
+              <option value="18" label="18"></option>
+              <option value="19" label="19"></option>
+              <option value="20" label="20"></option>
+              <option value="21" label="21"></option>
+              <option value="22" label="22"></option>
+              <option value="23" label="23"></option>
+              <option value="24" label="24"></option>
+            </datalist>
+          </label>
+          <div class="md:col-span-1">
+            <div class="rounded-xl bg-slate-100 p-3 text-center">
+              <div class="text-xs text-slate-500">Extra energy</div>
+              <div id="phoneJ" class="text-lg font-semibold">36,000 J</div>
+            </div>
+          </div>
+        </div>
+        <p class="mt-3 text-sm text-slate-600">Calculation: E = 5 W × (hours × 3600 s). This is added to the "Brain" category.</p>
+      </div>
+    </section>
+
+    <!-- Summary Card -->
+    <section class="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6">
+      <h2 class="text-xl font-semibold mb-4">Daily Energy Summary</h2>
+      <div class="grid md:grid-cols-3 gap-4 text-center">
+        <div class="bg-white rounded-xl p-4 shadow-sm">
+          <div class="text-2xl font-bold text-blue-600" id="totalInput">0</div>
+          <div class="text-sm text-slate-600">Total Input</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm">
+          <div class="text-2xl font-bold text-green-600" id="totalOutput">0</div>
+          <div class="text-sm text-slate-600">Total Output</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm">
+          <div class="text-2xl font-bold" id="balance">Balanced</div>
+          <div class="text-sm text-slate-600">Energy Balance</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-10 text-center text-xs text-slate-500">
+      <p>Personal Energy Life Dashboard - Design By: Hsuan-Jun Lin</p>
+      <p>@Arizona State University - SES 141 Design Project Fall 2025 #69375</p>
+    </footer>
+  </main>
+
+  <script>
+    // ---------- Configuration and State ----------
+    const state = {
+      unit: 'kcal',
+      phoneExtraHours: 2,
+      presets: {
+        average: { food: 2200, sun: 1.0, sleep: 8, exercise: 30, bmr: 80, ex: 100, brain: 5, env: 20 },
+        athlete: { food: 3000, sun: 2.0, sleep: 9, exercise: 120, bmr: 90, ex: 150, brain: 5, env: 25 },
+        sedentary: { food: 1800, sun: 0.5, sleep: 7, exercise: 10, bmr: 70, ex: 80, brain: 5, env: 15 }
+      }
+    };
+
+    // ---------- Helper Functions ----------
+    const kcalToJ = (kcal) => kcal * 4184;
+    const JtokWh = (J) => J / 3_600_000;
+    const hoursToSeconds = (h) => h * 3600;
+    const minutesToSeconds = (m) => m * 60;
+
+    function convertValue(value, fromUnit, toUnit) {
+      if (fromUnit === toUnit) return value;
+      
+      // Convert to Joules first
+      let valueInJ;
+      switch(fromUnit) {
+        case 'kcal': valueInJ = kcalToJ(value); break;
+        case 'kJ': valueInJ = value * 1000; break;
+        case 'kWh': valueInJ = value * 3_600_000; break;
+        default: valueInJ = value; // Joules
+      }
+      
+      // Convert to target unit
+      switch(toUnit) {
+        case 'kcal': return valueInJ / 4184;
+        case 'kJ': return valueInJ / 1000;
+        case 'kWh': return valueInJ / 3_600_000;
+        default: return valueInJ; // Joules
+      }
+    }
+
+    function formatValue(value, unit) {
+      if (value === 0) return `0 ${unit}`;
+      
+      if (unit === 'J' && value >= 1e6) {
+        return (value / 1e6).toFixed(2) + ' MJ';
+      } else if (unit === 'J' && value >= 1000) {
+        return (value / 1000).toFixed(1) + ' kJ';
+      } else if (unit === 'kcal' && value >= 1000) {
+        return (value / 1000).toFixed(1) + ' Mcal';
+      }
+      
+      return value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' ' + unit;
+    }
+
+    function animateValueChange(element) {
+      element.classList.add('value-change');
+      setTimeout(() => element.classList.remove('value-change'), 500);
+    }
+
+    // ---------- Input Handling ----------
+    function setupInputHandlers() {
+      // Real-time updates for all inputs
+      document.querySelectorAll('.change-trigger').forEach(input => {
+        input.addEventListener('input', debounce(updateAllVisuals, 300));
+      });
+      
+      // Unit selector
+      document.getElementById('unitSelector').addEventListener('change', (e) => {
+        state.unit = e.target.value;
+        updateAllVisuals();
+      });
+      
+      // Preset selector
+      document.getElementById('presetSelector').addEventListener('change', (e) => {
+        if (e.target.value !== 'custom') {
+          applyPreset(state.presets[e.target.value]);
+        }
+      });
+      
+      // Save/Load buttons
+      document.getElementById('btnSave').addEventListener('click', saveSettings);
+      document.getElementById('btnReset').addEventListener('click', resetToDefaults);
+      
+      // Timeline periods
+      document.querySelectorAll('.timeline-period').forEach(period => {
+        period.addEventListener('click', () => {
+          document.querySelectorAll('.timeline-period').forEach(p => p.classList.remove('active'));
+          period.classList.add('active');
+          
+          const food = period.dataset.food;
+          const sun = period.dataset.sun;
+          const sleep = period.dataset.sleep;
+          const exercise = period.dataset.exercise;
+          
+          document.getElementById('inFood').value = food;
+          document.getElementById('inSun').value = sun;
+          document.getElementById('inSleep').value = sleep;
+          document.getElementById('inExercise').value = exercise;
+          
+          updateAllVisuals();
+        });
+      });
+      
+      // Phone usage slider
+      document.getElementById('rangePhone').addEventListener('input', (e) => {
+        state.phoneExtraHours = Number(e.target.value);
+        const E = 5 * hoursToSeconds(state.phoneExtraHours);
+        document.getElementById('phoneJ').textContent = formatValue(E, 'J');
+        animateValueChange(document.getElementById('phoneJ'));
+        updateOutputsChart();
+      });
+    }
+
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    function applyPreset(preset) {
+      document.getElementById('inFood').value = preset.food;
+      document.getElementById('inSun').value = preset.sun;
+      document.getElementById('inSleep').value = preset.sleep;
+      document.getElementById('inExercise').value = preset.exercise;
+      document.getElementById('wBmr').value = preset.bmr;
+      document.getElementById('wEx').value = preset.ex;
+      document.getElementById('wBrainExtra').value = preset.brain;
+      document.getElementById('wEnv').value = preset.env;
+      
+      updateAllVisuals();
+    }
+
+    // ---------- Local Storage ----------
+    function saveSettings() {
+      const settings = {
+        food: document.getElementById('inFood').value,
+        sun: document.getElementById('inSun').value,
+        sleep: document.getElementById('inSleep').value,
+        exercise: document.getElementById('inExercise').value,
+        bmr: document.getElementById('wBmr').value,
+        ex: document.getElementById('wEx').value,
+        brain: document.getElementById('wBrainExtra').value,
+        env: document.getElementById('wEnv').value,
+        unit: state.unit,
+        phoneHours: state.phoneExtraHours
+      };
+      
+      localStorage.setItem('energyDashboardSettings', JSON.stringify(settings));
+      
+      // Show confirmation
+      const btn = document.getElementById('btnSave');
+      const originalText = btn.textContent;
+      btn.textContent = 'Saved!';
+      btn.classList.add('bg-green-600');
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.classList.remove('bg-green-600');
+      }, 1500);
+    }
+
+    function loadSettings() {
+      const saved = localStorage.getItem('energyDashboardSettings');
+      if (saved) {
+        const settings = JSON.parse(saved);
+        
+        document.getElementById('inFood').value = settings.food;
+        document.getElementById('inSun').value = settings.sun;
+        document.getElementById('inSleep').value = settings.sleep;
+        document.getElementById('inExercise').value = settings.exercise;
+        document.getElementById('wBmr').value = settings.bmr;
+        document.getElementById('wEx').value = settings.ex;
+        document.getElementById('wBrainExtra').value = settings.brain;
+        document.getElementById('wEnv').value = settings.env;
+        document.getElementById('unitSelector').value = settings.unit;
+        state.unit = settings.unit;
+        state.phoneExtraHours = settings.phoneHours;
+        document.getElementById('rangePhone').value = settings.phoneHours;
+        
+        updateAllVisuals();
+
+        return true;
+      }
+      return false;
+    }
+
+    function resetToDefaults() {
+      localStorage.removeItem('energyDashboardSettings');
+      applyPreset(state.presets.average);
+      document.getElementById('presetSelector').value = 'average';
+      document.getElementById('unitSelector').value = 'kcal';
+      state.unit = 'kcal';
+    }
+
+    // ---------- Visual Updates ----------
+    function updateAllVisuals() {
+      updateInputBars();
+      updateScienceText();
+      updateOutputsChart();
+      updateComparison();
+      updateEnergyFlowDiagram();
+      updateSummary();
+    }
+
+    function updateInputBars() {
+      const food = Math.max(0, Number(document.getElementById('inFood').value || 0));
+      const sun = Math.max(0, Number(document.getElementById('inSun').value || 0));
+      const sleep = Math.max(0, Number(document.getElementById('inSleep').value || 0));
+
+      // Animate bar changes
+      document.getElementById('barFood').style.width = Math.min(100, food / 30).toFixed(0) + '%';
+      document.getElementById('barSun').style.width = Math.min(100, (sun / 5) * 100).toFixed(0) + '%';
+      document.getElementById('barSleep').style.width = Math.min(100, (sleep / 9) * 100).toFixed(0) + '%';
+
+      // Update labels with current unit
+      document.getElementById('labelFood').textContent = `~${formatValue(food, 'kcal')} today`;
+      document.getElementById('labelSun').textContent = `~${sun.toFixed(1)} hr outside`;
+      document.getElementById('labelSleep').textContent = `~${sleep.toFixed(1)} hr sleep`;
+    }
+
+    function updateScienceText() {
+      const food = Math.max(0, Number(document.getElementById('inFood').value || 0));
+      const exercise = Math.max(0, Number(document.getElementById('inExercise').value || 0));
+      
+      const Efood = kcalToJ(food);
+      const tExercise = minutesToSeconds(exercise);
+      const Eexercise = 100 * tExercise;
+      
+      document.getElementById('exFood').innerHTML = 
+        `Food ≈ ${food.toFixed(0)} kcal. Using 1 kcal ≈ 4184 J → E ≈ ${food.toFixed(0)} × 4184 ≈ <b>${formatValue(Efood, 'J')}</b>.`;
+      
+      document.getElementById('exExercise').innerHTML = 
+        `${exercise} min at ~100 W → E = P·t ≈ 100 W × ${tExercise.toLocaleString()} s ≈ <b>${formatValue(Eexercise, 'J')}</b>.`;
+      
+      document.getElementById('exTotal').innerHTML = 
+        `If food intake ≈ ${food.toFixed(0)} kcal → ${food.toFixed(0)} × 4184 ≈ <b>${formatValue(Efood, 'J')}</b>.`;
+      
+      document.getElementById('inDailyJ').value = Math.round(Efood);
+    }
+
+    // ---------- Outputs Pie Chart ----------
+    let outputsChart;
+    const explainers = {
+      'Basal Metabolic Rate (BMR)': 'BMR covers baseline cellular work: ion pumps (Na⁺/K⁺‑ATPase), protein synthesis, and thermoregulation.',
+      'Exercise / Movement': 'Muscle fibers convert chemical energy to mechanical work with ~20–25% efficiency; the rest becomes heat.',
+      'Brain (Cognitive work)': 'Neurons use ATP to maintain ion gradients and fire action potentials—energy‑intensive signaling and synaptic transmission.',
+      'Environmental heat loss': 'Heat transfer to the environment via conduction, convection, radiation, and sweat evaporation.',
+    };
+
+    function renderExplain(activeKey = null) {
+      const explain = document.getElementById('explain');
+      explain.innerHTML = '';
+      Object.entries(explainers).forEach(([k, v]) => {
+        const div = document.createElement('div');
+        div.className = 'rounded-xl border p-3 ' + (activeKey === k ? 'bg-slate-50 border-slate-400' : 'bg-white');
+        div.innerHTML = `<div class="font-medium">${k}</div><div class="text-slate-600">${v}</div>`;
+        explain.appendChild(div);
+      });
+    }
+
+    function computeDailyFromPower() {
+      const daySec = 86400;
+      const wBmr = Math.max(0, Number(document.getElementById('wBmr').value || 80));
+      const wEx = Math.max(0, Number(document.getElementById('wEx').value || 100));
+      const wBrain = Math.max(0, Number(document.getElementById('wBrainExtra').value || 5));
+      const wEnv = Math.max(0, Number(document.getElementById('wEnv').value || 20));
+
+      const tExercise = minutesToSeconds(Math.max(0, Number(document.getElementById('inExercise').value || 0)));
+
+      const Ebmr = wBmr * daySec;
+      const Eex = wEx * tExercise;
+      const Ebrain = wBrain * daySec;
+      const Eenv = wEnv * daySec;
+
+      const phoneH = state.phoneExtraHours;
+      const Ephone = 5 * hoursToSeconds(phoneH);
+
+      return { Ebmr, Eex, Ebrain: Ebrain + Ephone, Eenv };
+    }
+
+    function updateOutputsChart() {
+      const { Ebmr, Eex, Ebrain, Eenv } = computeDailyFromPower();
+      const data = [Ebmr, Eex, Ebrain, Eenv];
+      const labels = ['Basal Metabolic Rate (BMR)', 'Exercise / Movement', 'Brain (Cognitive work)', 'Environmental heat loss'];
+
+      const ctx = document.getElementById('pieOutputs').getContext('2d');
+      if (outputsChart) outputsChart.destroy();
+      
+      outputsChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { usePointStyle: true },
+              onHover: (evt, legendItem) => renderExplain(labels[legendItem.index])
+            },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const value = convertValue(ctx.raw, 'J', state.unit);
+                  return `${ctx.label}: ${formatValue(value, state.unit)}`;
+                }
+              }
+            }
+          }
+        }
+      });
+      renderExplain();
+    }
+
+    // ---------- Comparison Bar Chart ----------
+    let cmpChart;
+    function updateComparison() {
+      const J = Math.max(0, Number(document.getElementById('inDailyJ').value || 0));
+      const kwh = JtokWh(J);
+      const applianceW = Math.max(1, Number(document.getElementById('inApplianceW').value || 50));
+      const hoursAppliance = (kwh * 1000) / applianceW;
+
+      document.getElementById('cmpKwh').innerHTML = 
+        `Daily energy ≈ ${formatValue(J, 'J')} ≈ <b>${kwh.toFixed(2)} kWh</b>.`;
+      document.getElementById('cmpAppliance').textContent = 
+        `Equivalent to continuously running an appliance for ~${hoursAppliance.toFixed(1)} hours (at ${applianceW} W).`;
+
+      const ctx = document.getElementById('barCompare').getContext('2d');
+      if (cmpChart) cmpChart.destroy();
+      
+      cmpChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Your daily energy (kWh)', 'Appliance running time (hours)'],
+          datasets: [
+            { 
+              data: [kwh, hoursAppliance],
+              backgroundColor: ['#3b82f6', '#10b981']
+            },
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { 
+              callbacks: {
+                label: (ctx) => {
+                  if (ctx.datasetIndex === 0) {
+                    return `Energy: ${ctx.parsed.y.toFixed(2)} kWh`;
+                  } else {
+                    return `Running time: ${ctx.parsed.y.toFixed(1)} hours`;
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function updateEnergyFlowDiagram() {
+      const { Ebmr, Eex, Ebrain, Eenv } = computeDailyFromPower();
+      const foodInput = kcalToJ(Number(document.getElementById('inFood').value || 0));
+      const totalOutput = Ebmr + Eex + Ebrain + Eenv;
+
+      const usefulB = Ebmr * 0.8, lossB = Ebmr * 0.2;
+      const usefulE = Eex  * 0.2, lossE = Eex  * 0.8;
+      const usefulC = Ebrain * 0.9, lossC = Ebrain * 0.1;
+
+      const totalUseful = usefulB + usefulE + usefulC;
+      const totalLoss   = lossB   + lossE   + lossC   + Eenv;
+
+      // metrics
+      document.getElementById('overallEfficiency').textContent =
+        `${Math.max(0, (totalUseful / Math.max(foodInput,1) * 100)).toFixed(1)}%`;
+      document.getElementById('exerciseEfficiency').textContent = '20%';
+      document.getElementById('heatLossPercent').textContent =
+        `${(totalLoss / Math.max(totalOutput,1) * 100).toFixed(1)}%`;
+
+      const container = document.getElementById('energyFlowDiagram');
+      container.innerHTML = '';
+
+      // Build three lanes (swimlanes) with a 5-column grid
+      const rows = [
+        {
+          title: 'Basal Metabolism Pathway',
+          nodes: [
+            { id: 'b-food', type: 'input', label: 'Food Energy', value: foodInput },
+            { id: 'b-digest', type: 'process', label: 'Digestion', value: foodInput * 0.1 },
+            { id: 'b-bmr', type: 'process', label: 'BMR', value: Ebmr },
+            { id: 'b-work', type: 'output', label: 'Cellular Work', value: Ebmr * 0.8 },
+            { id: 'b-loss', type: 'loss', label: 'Heat Loss', value: Ebmr * 0.2 },
+          ],
+          edges: [
+            ['b-food','b-digest', foodInput],
+            ['b-digest','b-bmr', foodInput*0.9],
+            ['b-bmr','b-work', Ebmr*0.8],
+            ['b-bmr','b-loss', Ebmr*0.2],
+          ]
+        },
+        {
+          title: 'Exercise Pathway',
+          nodes: [
+            { id: 'e-food', type: 'input', label: 'Food Energy', value: foodInput },
+            { id: 'e-digest', type: 'process', label: 'Digestion', value: foodInput * 0.1 },
+            { id: 'e-ex', type: 'process', label: 'Exercise', value: Eex },
+            { id: 'e-work', type: 'output', label: 'Mechanical Work', value: Eex * 0.2 },
+            { id: 'e-loss', type: 'loss', label: 'Heat Loss', value: Eex * 0.8 },
+          ],
+          edges: [
+            ['e-food','e-digest', foodInput],
+            ['e-digest','e-ex', foodInput*0.9],
+            ['e-ex','e-work', Eex*0.2],
+            ['e-ex','e-loss', Eex*0.8],
+          ]
+        },
+        {
+          title: 'Brain Activity Pathway',
+          nodes: [
+            { id: 'c-food', type: 'input', label: 'Food Energy', value: foodInput },
+            { id: 'c-digest', type: 'process', label: 'Digestion', value: foodInput * 0.1 },
+            { id: 'c-brain', type: 'process', label: 'Brain Activity', value: Ebrain },
+            { id: 'c-work', type: 'output', label: 'Cognitive Work', value: Ebrain * 0.9 },
+            { id: 'c-loss', type: 'loss', label: 'Heat Loss', value: Ebrain * 0.1 },
+          ],
+          edges: [
+            ['c-food','c-digest', foodInput],
+            ['c-digest','c-brain', foodInput*0.9],
+            ['c-brain','c-work', Ebrain*0.9],
+            ['c-brain','c-loss', Ebrain*0.1],
+          ]
+        }
+      ];
+
+      const frag = document.createDocumentFragment();
+
+      rows.forEach((row, idx) => {
+        const lane = document.createElement('div');
+        lane.className = 'lane mb-6';
+        const title = document.createElement('div');
+        title.className = 'lane-title';
+        title.textContent = row.title;
+        lane.appendChild(title);
+
+        const grid = document.createElement('div');
+        grid.className = 'lane-grid';
+        row.nodes.forEach(n => {
+          const node = document.createElement('div');
+          node.id = n.id;
+          node.className = `flow-node ${n.type}`;
+          node.innerHTML = `<div class="font-semibold">${n.label}</div>
+                            <div class="text-xs opacity-90">${formatValue(n.value,'J')}</div>`;
+          node.addEventListener('mouseenter', () => showPathwayDetails(n.label,n.value,n.type));
+          grid.appendChild(node);
+        });
+        lane.appendChild(grid);
+        frag.appendChild(lane);
+      });
+
+      container.appendChild(frag);
+
+      // After nodes are in the DOM, draw connectors with SVG
+      const svg = document.getElementById('flowConnectors');
+      // clear previous
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+      // define arrow marker
+      const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+      const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
+      marker.setAttribute('id','arrow');
+      marker.setAttribute('markerWidth','10');
+      marker.setAttribute('markerHeight','10');
+      marker.setAttribute('refX','7');
+      marker.setAttribute('refY','3');
+      marker.setAttribute('orient','auto');
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d','M0,0 L0,6 L9,3 z');
+      path.setAttribute('fill','#6b7280');
+      marker.appendChild(path);
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      function drawEdge(fromId, toId, value) {
+        const fromEl = document.getElementById(fromId);
+        const toEl = document.getElementById(toId);
+        if (!(fromEl && toEl)) return;
+
+        const wrap = container.getBoundingClientRect();
+        const a = fromEl.getBoundingClientRect();
+        const b = toEl.getBoundingClientRect();
+
+        // start at right-middle of source; end at left-middle of target
+        const x1 = (a.right - wrap.left);
+        const y1 = (a.top + a.height/2 - wrap.top);
+        const x2 = (b.left - wrap.left);
+        const y2 = (b.top + b.height/2 - wrap.top);
+
+        // draw a smooth cubic bezier
+        const d = `M ${x1} ${y1} C ${x1+40} ${y1}, ${x2-40} ${y2}, ${x2} ${y2}`;
+        const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+        p.setAttribute('d', d);
+        p.setAttribute('fill','none');
+        p.setAttribute('stroke','#6b7280');
+        p.setAttribute('stroke-width','3');
+        p.setAttribute('marker-end','url(#arrow)');
+        svg.appendChild(p);
+
+        // value label
+        const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+        text.setAttribute('x', (x1+x2)/2);
+        text.setAttribute('y', (y1+y2)/2 - 6);
+        text.setAttribute('font-size','11');
+        text.setAttribute('text-anchor','middle');
+        text.setAttribute('fill','#111827');
+        text.textContent = formatValue(value,'J');
+        svg.appendChild(text);
+      }
+
+      // draw all edges
+      rows.forEach(row => {
+        row.edges.forEach(([a,b,val]) => drawEdge(a,b,val));
+      });
+
+      // totals row (separate summary)
+      const totals = document.createElement('div');
+      totals.className = 'mt-4 grid grid-cols-2 gap-4';
+      totals.innerHTML = `
+        <div class="flow-node output">
+          <div class="font-semibold">Total Useful Energy</div>
+          <div class="text-xs opacity-90">${formatValue(totalUseful,'J')}</div>
+        </div>
+        <div class="flow-node loss">
+          <div class="font-semibold">Total Heat Loss</div>
+          <div class="text-xs opacity-90">${formatValue(totalLoss,'J')}</div>
+        </div>`;
+      container.appendChild(totals);
+    }
+    
+    function showPathwayDetails(label, value, type) {
+      const detailsContainer = document.getElementById('pathwayDetails');
+      let description = '';
+      
+      switch(type) {
+        case 'input':
+          description = 'Chemical energy from food intake, measured in kilocalories (kcal)';
+          break;
+        case 'process':
+          description = 'Energy conversion process within the body';
+          break;
+        case 'output':
+          description = 'Useful energy output for bodily functions';
+          break;
+        case 'loss':
+          description = 'Energy lost as heat to the environment';
+          break;
+        case 'connection':
+          description = 'Energy transfer between processes';
+          break;
+        default:
+          description = 'Energy pathway component';
+      }
+      
+      detailsContainer.innerHTML = `
+        <div class="p-3 bg-slate-50 rounded-lg">
+          <div class="font-semibold text-blue-600">${label}</div>
+          <div class="text-sm text-slate-700 mt-1">${description}</div>
+          <div class="text-xs text-slate-500 mt-2">Energy: ${formatValue(value, 'J')}</div>
+        </div>
+      `;
+    }
+
+    // ---------- Summary Update ----------
+    function updateSummary() {
+      const foodInput = kcalToJ(Number(document.getElementById('inFood').value || 0));
+      const { Ebmr, Eex, Ebrain, Eenv } = computeDailyFromPower();
+      const totalOutput = Ebmr + Eex + Ebrain + Eenv;
+      
+      document.getElementById('totalInput').textContent = formatValue(convertValue(foodInput, 'J', state.unit), state.unit);
+      document.getElementById('totalOutput').textContent = formatValue(convertValue(totalOutput, 'J', state.unit), state.unit);
+      
+      const balanceElement = document.getElementById('balance');
+      const diff = Math.abs(foodInput - totalOutput) / foodInput;
+      
+      if (diff < 0.1) {
+        balanceElement.textContent = 'Balanced';
+        balanceElement.className = 'text-2xl font-bold text-green-600';
+      } else if (foodInput > totalOutput) {
+        balanceElement.textContent = 'Surplus';
+        balanceElement.className = 'text-2xl font-bold text-blue-600';
+      } else {
+        balanceElement.textContent = 'Deficit';
+        balanceElement.className = 'text-2xl font-bold text-amber-600';
+      }
+      
+      animateValueChange(document.getElementById('totalInput'));
+      animateValueChange(document.getElementById('totalOutput'));
+      animateValueChange(balanceElement);
+    }
+
+    // ---------- Dialog Wiring ----------
+    function setupDialogs() {
+      document.querySelectorAll('[data-dialog]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-dialog');
+          document.getElementById(id)?.showModal();
+        });
+      });
+      
+      document.querySelectorAll('dialog [data-close]').forEach(btn => {
+        btn.addEventListener('click', () => btn.closest('dialog')?.close());
+      });
+    }
+
+    // ---------- Explain Panel Toggle ----------
+    document.getElementById('btnExplain').addEventListener('click', () => {
+      const panel = document.getElementById('sciencePanel');
+      panel.classList.toggle('hidden');
+    });
+
+    function renderPhoneScale() {
+      const scale = document.getElementById('phone-scale');
+      if (!scale) return;
+      scale.innerHTML = "";
+      for (let h = 0; h <= 24; h++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (h % 6 === 0 ? ' major' : '');
+        const num = document.createElement('div');
+        num.className = 'num';
+        num.textContent = h;
+        cell.appendChild(num);
+        scale.appendChild(cell);
+      }
+    }
+
+    // ---------- Initialization ----------
+    function init() {
+      setupDialogs();
+      setupInputHandlers();
+      
+      // Try to load saved settings, otherwise use defaults
+      if (!loadSettings()) {
+        applyPreset(state.presets.average);
+      }
+      
+      updateAllVisuals();
+      renderExplain();
+      renderPhoneScale();
+    }
+
+    // Start the application
+    init();
+  </script>
+</body>
+</html>
